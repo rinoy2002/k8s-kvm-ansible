@@ -1,7 +1,8 @@
 ---
-- name: Configure Local Debian Host for KVM/Libvirt
-  hosts: localhost
-  connection: local
+- name: Configure KVM Host for Libvirt
+  hosts: kvm_host
+  # 'ansible_connection=local' in inventory handles running this locally
+  # If it's a remote host, Ansible will SSH as normal.
   become: true
   gather_facts: true
 
@@ -11,7 +12,7 @@
         update_cache: true
         cache_valid_time: 3600
 
-    - name: Install KVM/libvirt packages
+    - name: Install KVM/libvirt packages and Python bindings
       ansible.builtin.apt:
         name:
           - qemu-kvm
@@ -19,11 +20,9 @@
           - libvirt-clients
           - bridge-utils
           - virt-manager
-          - python3-libvirt   # Required for community.libvirt Ansible collection
-          - libguestfs-tools  # Useful for image customization (like virt-customize)
-          - virtinst          # For the virt-install tool
+          - python3-libvirt   # For community.libvirt
+          - libguestfs-tools  # For virt-customize
         state: present
-      register: install_packages
 
     - name: Ensure libvirtd service is running and enabled
       ansible.builtin.systemd:
@@ -33,17 +32,6 @@
 
     - name: Add current user to 'libvirt' group
       ansible.builtin.user:
-        name: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+        name: "{{ lookup('env', 'USER') }}"
         groups: libvirt
         append: true
-      # NOTE: User needs to log out/in after this task for group changes to take effect.
-      # You can add a `pause` task and note this to the user.
-
-    - name: Check for successful installation
-      ansible.builtin.command: virsh list --all
-      register: virsh_check
-      changed_when: false
-      
-    - name: Display KVM installation status
-      ansible.builtin.debug:
-        msg: "KVM/Libvirt installation complete. You may need to log out and log back in for group changes to take effect."

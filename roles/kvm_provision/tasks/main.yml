@@ -4,8 +4,7 @@
     url: "{{ cloud_image_url }}"
     dest: "{{ kvm_disk_path }}/{{ cloud_image_file }}"
     mode: '0644'
-  delegate_to: localhost
-  run_once: true
+  run_once: true # Still only run once
 
 - name: 2. Prepare, customize, and create each VM
   block:
@@ -32,7 +31,6 @@
         --run-command 'echo "    gateway 192.168.122.1" >> /etc/network/interfaces.d/50-cloud-init'
         --run-command 'echo "    dns-nameservers 192.168.122.1 8.8.8.8" >> /etc/network/interfaces.d/50-cloud-init'
       changed_when: true
-      # Note: 'ens2' is the common interface name for virtio on Debian cloud images.
 
     - name: Create VM domain from XML definition
       community.libvirt.virt:
@@ -46,7 +44,7 @@
             <os>
               <type arch='x86_64' machine='pc-q35-7.2'>hvm</type>
               <boot dev='hd'/>
-            </OS>
+            </os>
             <features><acpi/><apic/><vmport state='off'/></features>
             <devices>
               <disk type='file' device='disk'>
@@ -77,4 +75,3 @@
     - { name: k8s-worker-2, ip: "192.168.122.12", mac: "52:54:00:11:00:12" }
   loop_control:
     label: "{{ item.name }}"
-  delegate_to: localhost

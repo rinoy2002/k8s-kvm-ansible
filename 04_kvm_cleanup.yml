@@ -1,45 +1,70 @@
 ---
-- name: Cleanup Kubernetes KVM Virtual Machines and Resources
-  hosts: localhost
-  connection: local
+- name: Teardown Kubernetes VMs AND Uninstall KVM Host Setup
+  hosts: kvm_host
   become: true
   gather_facts: false
 
   vars:
-    # List of VMs to destroy/undefine
     vm_names:
       - k8s-master
       - k8s-worker-1
       - k8s-worker-2
-    # Base directory where your VM disks and volumes are stored (e.g., the default libvirt pool)
-    disk_base_path: /var/lib/libvirt/images # Adjust this if you used a different path
+    kvm_packages:
+      - qemu-kvm
+      - libvirt-daemon-system
+      - libvirt-clients
+      - bridge-utils
+      - virt-manager
+      - python3-libvirt
+      - libguestfs-tools
+      - virtinst
+    disk_base_path: "{{ kvm_disk_path | default('/var/lib/libvirt/images') }}"
+    cloud_image_file: "{{ cloud_image_file | default('debian-12-genericcloud-amd64.qcow2') }}"
 
   tasks:
-    - name: 1. Destroy and undefine KVM domains (VMs)
+    - name: Destroy and undefine KVM domains (VMs)
       community.libvirt.virt:
         name: "{{ item }}"
-        command: undefine # This stops the VM if running and removes the definition
-        state: absent     # Ensures the domain is completely removed from libvirt
-        # Delete any associated storage volumes (disks)
-        autostart: false
+        command: undefine 
+        state: absent     
         delete_volumes: true
       loop: "{{ vm_names }}"
-      ignore_errors: true # Ignore errors if a VM doesn't exist
+      ignore_errors: true 
 
-    - name: 2. Remove associated disk image files
+    - name: Remove associated disk image files
       ansible.builtin.file:
-        path: "{{ disk_base_path }}/{{ item }}.qcow2" # Assuming qcow2 format
+        path: "{{ disk_base_path }}/{{ item }}.qcow2" 
         state: absent
       loop: "{{ vm_names }}"
-      when: disk_base_path is defined and disk_base_path != '' # Safety check
       ignore_errors: true
-      
-    - name: 3. (Optional) Remove the default cloud-init image if it was downloaded/copied
+
+    - name: Remove base cloud image
       ansible.builtin.file:
-        path: "{{ disk_base_path }}/debian-11-generic-amd64.qcow2"
+        path: "{{ disk_base_path }}/{{ cloud_image_file }}"
         state: absent
       ignore_errors: true
+
+    - name: Remove current user from 'libvirt' group
+      ansible.builtin.user:
+        name: "{{ lookup('env', 'USER') }}"
+        groups: libvirt
+        append: false # This means 'remove'
+      ignore_errors: true # Ignore if user is not in group
+
+    - name: Stop and disable libvirtd service
+      ansible.builtin.systemd:
+        name: libvirtd
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Uninstall KVM, libvirt, and all related packages
+      ansible.builtin.apt:
+        name: "{{ kvm_packages }}"
+        state: absent
+        autoremove: true # Removes dependencies
+        purge: true      # Removes config files
 
     - name: Cleanup Complete Message
       ansible.builtin.debug:
-        msg: "Cleanup successful. All Kubernetes VMs and their disks have been removed from libvirt."
+        msg: "Full cleanup successful. VMs, disks, and all KVM packages have been removed."

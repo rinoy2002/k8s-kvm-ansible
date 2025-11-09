@@ -1,22 +1,23 @@
+[kvm_host]
+# This is your KVM hypervisor / Ansible control node.
+# If you are running this from your local Debian machine, leave this as 'localhost'.
+# If you are running this from a separate control node targeting a remote KVM host,
+# change 'localhost' to the IP/hostname of that KVM host.
+localhost ansible_connection=local
+
 [all:vars]
-# Values here apply to ALL hosts in this file
+# Default user for Debian cloud images
 ansible_user=debian
 ansible_python_interpreter=/usr/bin/python3
-ansible_ssh_private_key_file=~/.ssh/id_rsa
+ansible_ssh_private_key_file=~/.ssh/id_rsa # Ensure this key is in the VM!
 
 [control_plane]
-# This group contains your main K8s master node
-# 'k8s-master' is a custom name.
-# 'ansible_host' is the IP Ansible will connect to.
 k8s-master ansible_host=192.168.122.10
 
 [workers]
-# This group contains your K8s worker nodes
 k8s-worker-1 ansible_host=192.168.122.11
 k8s-worker-2 ansible_host=192.168.122.12
 
 [k8s_cluster:children]
-# A "group of groups". This lets you target
-# 'k8s_cluster' to run tasks on ALL 3 nodes.
 control_plane
 workers

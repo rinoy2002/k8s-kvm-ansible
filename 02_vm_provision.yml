@@ -1,7 +1,6 @@
 ---
 - name: Provision 3 Debian KVM Virtual Machines
-  hosts: localhost
-  connection: local
+  hosts: kvm_host
   become: true
   gather_facts: false
   
