@@ -1,0 +1,25 @@
+# Ansible
+*.retry
+ansible.cfg
+
+# KVM/Libvirt disk images
+# These are large and should be built by the playbook, not stored in git
+*.qcow2
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Credentials & Secrets
+*vault*
+*secret*
+*.pem
+*.key
+
+# Operating System files
+.DS_Store
+Thumbs.db

@@ -1,74 +1,21 @@
 ---
-- name: 1. Download Debian Cloud Image if not present
+- name: Download Debian Cloud Image if not present
   ansible.builtin.get_url:
     url: "{{ cloud_image_url }}"
     dest: "{{ kvm_disk_path }}/{{ cloud_image_file }}"
     mode: '0644'
-  run_once: true # Still only run once
+    timeout: 60
+  run_once: true
 
-- name: 2. Prepare, customize, and create each VM
-  block:
-    - name: Create copy of the base image for {{ item.name }}
-      ansible.builtin.copy:
-        src: "{{ kvm_disk_path }}/{{ cloud_image_file }}"
-        dest: "{{ kvm_disk_path }}/{{ item.name }}.qcow2"
-        remote_src: true
+- name: Ensure the 'default' libvirt network is active
+  community.libvirt.virt_net:
+    name: default
+    state: active
+    autostart: true
+  run_once: true
 
-    - name: Resize the VM disk image
-      ansible.builtin.command: >
-        qemu-img resize {{ kvm_disk_path }}/{{ item.name }}.qcow2 {{ vm_disk_size }}
-      changed_when: true
-
-    - name: Customize image (hostname, SSH key, static IP)
-      ansible.builtin.command: >
-        virt-customize -a {{ kvm_disk_path }}/{{ item.name }}.qcow2
-        --hostname {{ item.name }}
-        --ssh-inject {{ ansible_user }}:file:~/.ssh/id_rsa.pub
-        --run-command 'echo "auto ens2" > /etc/network/interfaces.d/50-cloud-init'
-        --run-command 'echo "iface ens2 inet static" >> /etc/network/interfaces.d/50-cloud-init'
-        --run-command 'echo "    address {{ item.ip }}" >> /etc/network/interfaces.d/50-cloud-init'
-        --run-command 'echo "    netmask 255.255.255.0" >> /etc/network/interfaces.d/50-cloud-init'
-        --run-command 'echo "    gateway 192.168.122.1" >> /etc/network/interfaces.d/50-cloud-init'
-        --run-command 'echo "    dns-nameservers 192.168.122.1 8.8.8.8" >> /etc/network/interfaces.d/50-cloud-init'
-      changed_when: true
-
-    - name: Create VM domain from XML definition
-      community.libvirt.virt:
-        name: "{{ item.name }}"
-        command: create
-        xml: |
-          <domain type='kvm'>
-            <name>{{ item.name }}</name>
-            <memory unit='MiB'>{{ vm_memory }}</memory>
-            <vcpu placement='static'>{{ vm_vcpus }}</vcpu>
-            <os>
-              <type arch='x86_64' machine='pc-q35-7.2'>hvm</type>
-              <boot dev='hd'/>
-            </os>
-            <features><acpi/><apic/><vmport state='off'/></features>
-            <devices>
-              <disk type='file' device='disk'>
-                <driver name='qemu' type='qcow2'/>
-                <source file='{{ kvm_disk_path }}/{{ item.name }}.qcow2'/>
-                <target dev='vda' bus='virtio'/>
-              </disk>
-              <interface type='network'>
-                <source network='{{ kvm_network_name }}'/>
-                <model type='virtio'/>
-                <mac address='{{ item.mac }}'/>
-              </interface>
-              <console type='pty'><target type='serial'/></console>
-              <graphics type='vnc' port='-1'/>
-              <video><model type='virtio'/></video>
-            </devices>
-          </domain>
-      register: vm_result
-
-    - name: Wait for VM to be accessible via SSH
-      ansible.builtin.wait_for_connection:
-        delay: 30
-        timeout: 300
-
+- name: Include VM creation tasks for each VM
+  ansible.builtin.include_tasks: _create_vm.yml
   loop:
     - { name: k8s-master,   ip: "192.168.122.10", mac: "52:54:00:11:00:10" }
     - { name: k8s-worker-1, ip: "192.168.122.11", mac: "52:54:00:11:00:11" }
