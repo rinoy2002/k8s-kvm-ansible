@@ -43,7 +43,6 @@
       ansible.builtin.command: virsh list --all
       register: virsh_check
       changed_when: false
-      failed_when: "'virsh' not in virsh_check.stdout"
       
     - name: Display KVM installation status
       ansible.builtin.debug:
