@@ -17,15 +17,22 @@
   ansible.builtin.command: >
     virt-customize -a {{ kvm_disk_path }}/{{ item.name }}.qcow2
     --hostname {{ item.name }}
-    --run-command 'useradd -m -s /bin/bash {{ ansible_user }}'
+    --install openssh-server
+    --run-command 'ssh-keygen -A'
+    --run-command 'systemctl enable ssh'
+    --root-password password:temppassword
+    --run-command 'useradd -m -s /bin/bash -p $(openssl passwd -1 debian) {{ ansible_user }}'
+    --run-command 'usermod -aG sudo {{ ansible_user }}'
     --ssh-inject {{ ansible_user }}:file:{{ lookup('env', 'HOME') }}/.ssh/id_rsa.pub
-    --run-command 'mkdir -p /etc/network/interfaces.d/'
-    --run-command 'echo "auto ens2" > /etc/network/interfaces.d/50-cloud-init'
-    --run-command 'echo "iface ens2 inet static" >> /etc/network/interfaces.d/50-cloud-init'
-    --run-command 'echo "    address {{ item.ip }}" >> /etc/network/interfaces.d/50-cloud-init'
-    --run-command 'echo "    netmask 255.255.255.0" >> /etc/network/interfaces.d/50-cloud-init'
-    --run-command 'echo "    gateway 192.168.122.1" >> /etc/network/interfaces.d/50-cloud-init'
-    --run-command 'echo "    dns-nameservers 192.168.122.1 8.8.8.8" >> /etc/network/interfaces.d/50-cloud-init'
+    --run-command 'mkdir -p /etc/systemd/network/'
+    --run-command 'echo "[Match]" > /etc/systemd/network/10-static.network'
+    --run-command 'echo "Name=enp1s0" >> /etc/systemd/network/10-static.network'
+    --run-command 'echo "[Network]" >> /etc/systemd/network/10-static.network'
+    --run-command 'echo "Address={{ item.ip }}/24" >> /etc/systemd/network/10-static.network'
+    --run-command 'echo "Gateway=192.168.122.1" >> /etc/systemd/network/10-static.network'
+    --run-command 'echo "DNS=192.168.122.1" >> /etc/systemd/network/10-static.network'
+    --run-command 'echo "DNS=8.8.8.8" >> /etc/systemd/network/10-static.network'
+    --run-command 'systemctl enable systemd-networkd'
   changed_when: true
 
 - name: Define VM domain from XML
