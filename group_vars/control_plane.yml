@@ -1,0 +1,4 @@
+---
+# Control Plane Specific Settings
+k8s_master_ip: 192.168.122.10
+k8s_control_plane_endpoint: "{{ k8s_master_ip }}:6443"

@@ -1,0 +1,17 @@
+---
+# --- Global K8s & VM Configuration ---
+
+# Kubernetes Settings
+kube_version: "1.30.0"
+pod_cidr: "10.244.0.0/16"
+
+# KVM/Libvirt Settings
+kvm_disk_path: "/var/lib/libvirt/images"
+kvm_network_name: "default"
+vm_vcpus: 2
+vm_memory: 2048 # MB
+vm_disk_size: 20G
+
+# Debian Cloud Image Details
+cloud_image_url: "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
+cloud_image_file: "debian-12-genericcloud-amd64.qcow2"

@@ -1,0 +1,45 @@
+---
+- name: Cleanup Kubernetes KVM Virtual Machines and Resources
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  vars:
+    # List of VMs to destroy/undefine
+    vm_names:
+      - k8s-master
+      - k8s-worker-1
+      - k8s-worker-2
+    # Base directory where your VM disks and volumes are stored (e.g., the default libvirt pool)
+    disk_base_path: /var/lib/libvirt/images # Adjust this if you used a different path
+
+  tasks:
+    - name: 1. Destroy and undefine KVM domains (VMs)
+      community.libvirt.virt:
+        name: "{{ item }}"
+        command: undefine # This stops the VM if running and removes the definition
+        state: absent     # Ensures the domain is completely removed from libvirt
+        # Delete any associated storage volumes (disks)
+        autostart: false
+        delete_volumes: true
+      loop: "{{ vm_names }}"
+      ignore_errors: true # Ignore errors if a VM doesn't exist
+
+    - name: 2. Remove associated disk image files
+      ansible.builtin.file:
+        path: "{{ disk_base_path }}/{{ item }}.qcow2" # Assuming qcow2 format
+        state: absent
+      loop: "{{ vm_names }}"
+      when: disk_base_path is defined and disk_base_path != '' # Safety check
+      ignore_errors: true
+      
+    - name: 3. (Optional) Remove the default cloud-init image if it was downloaded/copied
+      ansible.builtin.file:
+        path: "{{ disk_base_path }}/debian-11-generic-amd64.qcow2"
+        state: absent
+      ignore_errors: true
+
+    - name: Cleanup Complete Message
+      ansible.builtin.debug:
+        msg: "Cleanup successful. All Kubernetes VMs and their disks have been removed from libvirt."

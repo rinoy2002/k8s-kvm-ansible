@@ -1,0 +1,19 @@
+---
+- name: Install Kubernetes Prerequisites on All Nodes
+  hosts: k8s_cluster
+  become: true
+  roles:
+    - k8s_prerequisites
+
+- name: Initialize Kubernetes Control Plane (Master)
+  hosts: control_plane
+  become: true
+  roles:
+    - k8s_master_setup
+  # Delegation needed to save join command on local machine/control node
+
+- name: Join Worker Nodes to the Cluster
+  hosts: workers
+  become: true
+  roles:
+    - k8s_worker_join

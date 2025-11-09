@@ -1,0 +1,9 @@
+---
+- name: Ensure join command is available (delegated fact from master)
+  ansible.builtin.fail:
+    msg: "Join command was not set. Check the k8s_master_setup role output."
+  when: hostvars['k8s-master']['join_command'] is not defined
+
+- name: Execute join command on worker nodes
+  ansible.builtin.command: "{{ hostvars['k8s-master']['join_command'] }}"
+  changed_when: true
