@@ -1,0 +1,47 @@
+---
+- name: Reset Kubernetes cluster (if already initialized)
+  ansible.builtin.command: kubeadm reset -f
+  register: reset_output
+  ignore_errors: true
+  changed_when: reset_output.rc == 0
+
+- name: Run kubeadm init on the control plane node
+  ansible.builtin.command: >
+    kubeadm init 
+    --control-plane-endpoint "{{ k8s_control_plane_endpoint }}"
+    --pod-network-cidr "{{ pod_cidr }}"
+    --kubernetes-version v{{ kube_version }}
+    --upload-certs
+    --cri-socket unix:///var/run/containerd/containerd.sock
+  register: kubeadm_init_output
+  changed_when: "'Your Kubernetes control-plane has initialized successfully!' in kubeadm_init_output.stdout"
+
+- name: Extract the kubeadm token and hash
+  ansible.builtin.set_fact:
+    kubeadm_token: "{{ kubeadm_init_output.stdout | regex_search('--token ([^ ]+)') | regex_replace('--token ', '') }}"
+    kubeadm_hash: "{{ kubeadm_init_output.stdout | regex_search('--discovery-token-ca-cert-hash sha256:([^ ]+)') | regex_replace('--discovery-token-ca-cert-hash ', '') }}"
+  run_once: true
+  when: kubeadm_init_output is defined and kubeadm_init_output.stdout is defined
+
+- name: Create .kube directory for non-root user (e.g., 'debian')
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: Copy kubeconfig to non-root user's home
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/{{ ansible_user }}/.kube/config
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+
+- name: Install CNI (Calico example)
+  ansible.builtin.command: >
+    /usr/bin/kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml
+  run_once: true
+  become: false

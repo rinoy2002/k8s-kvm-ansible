@@ -1,46 +1,84 @@
 ---
+- name: Install prerequisites for K8s APT repo
+  ansible.builtin.apt:
+    name:
+      - gpg
+      - curl
+      - ca-certificates
+    state: present
+    update_cache: true
+
 - name: Disable swap permanently and immediately
   ansible.builtin.command: "{{ item }}"
   loop:
     - swapoff -a
-    - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab # Comment out swap in fstab
+    - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
-- name: Install required K8s packages (kubelet, kubeadm, kubectl)
-  block:
-    - name: Add Google GPG key for Kubernetes
-      ansible.builtin.apt_key:
-        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-        state: present
+- name: Create /etc/apt/keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
 
-    - name: Add Kubernetes APT repository
-      ansible.builtin.apt_repository:
-        repo: "deb http://apt.kubernetes.io/ kubernetes-xenial main"
-        state: present
-        filename: kubernetes
+- name: Download the Kubernetes GPG key (new method)
+  ansible.builtin.shell: >
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key |
+    gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg # Won't run if file exists
 
-    - name: Update package list
-      ansible.builtin.apt:
-        update_cache: true
+- name: Set permissions for the GPG key
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    mode: '0644'
 
-    - name: Install K8s components and containerd
-      ansible.builtin.apt:
-        name:
-          - "kubelet={{ kube_version }}-*"
-          - "kubeadm={{ kube_version }}-*"
-          - "kubectl={{ kube_version }}-*"
-          - containerd.io
-        state: present
-        allow_downgrade: true
-        install_recommends: false
+- name: Add Kubernetes APT repository (new method)
+  ansible.builtin.copy:
+    content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /"
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    mode: '0644'
+
+- name: Download the Docker GPG key
+  ansible.builtin.shell: >
+    curl -fsSL https://download.docker.com/linux/debian/gpg |
+    gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  args:
+    creates: /etc/apt/keyrings/docker.gpg
+
+- name: Set permissions for the Docker GPG key
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/docker.gpg
+    mode: '0644'
+
+- name: Add Docker APT repository
+  ansible.builtin.copy:
+    content: "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable"
+    dest: /etc/apt/sources.list.d/docker.list
+    mode: '0644'
+
+- name: Update package list (after adding new repo)
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install K8s components and containerd
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ kube_version }}-*"
+      - "kubeadm={{ kube_version }}-*"
+      - "kubectl={{ kube_version }}-*"
+      - containerd.io
+    state: present
+    allow_downgrade: true
+    install_recommends: false
         
-    - name: Hold K8s package versions
-      ansible.builtin.dpkg_selections:
-        name: "{{ item }}"
-        selection: hold
-      loop:
-        - kubelet
-        - kubeadm
-        - kubectl
+- name: Hold K8s package versions
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
 
 - name: Configure Kernel Parameters for Kubernetes (netfilter/bridged traffic)
   ansible.builtin.blockinfile:
@@ -53,3 +91,31 @@
 
 - name: Apply sysctl params without reboot
   ansible.builtin.command: sysctl --system
+
+- name: Fix hostname resolution warning
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ ansible_host }} {{ inventory_hostname }}"
+    state: present
+
+- name: Ensure /etc/containerd directory exists
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: Generate containerd default config
+  ansible.builtin.shell:
+    cmd: containerd config default > /etc/containerd/config.toml
+
+- name: Enable SystemdCgroup in containerd config (using sed)
+  ansible.builtin.shell:
+    cmd: sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  # This is more reliable than the 'replace' module for this file
+
+- name: Restart containerd to apply changes
+  ansible.builtin.systemd:
+    name: containerd
+    state: restarted
+    daemon_reload: true
+  # We restart it immediately, no handler needed.

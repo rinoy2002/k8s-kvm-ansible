@@ -1,9 +1,12 @@
 ---
-- name: Ensure join command is available (delegated fact from master)
+- name: Ensure join token and hash are available (delegated facts from master)
   ansible.builtin.fail:
-    msg: "Join command was not set. Check the k8s_master_setup role output."
-  when: hostvars['k8s-master']['join_command'] is not defined
+    msg: "Join token or hash was not set. Check the k8s_master_setup role output."
+  when: hostvars['k8s-master']['kubeadm_token'] is not defined or hostvars['k8s-master']['kubeadm_hash'] is not defined
 
 - name: Execute join command on worker nodes
-  ansible.builtin.command: "{{ hostvars['k8s-master']['join_command'] }}"
+  ansible.builtin.shell: >
+    kubeadm join {{ hostvars['k8s-master']['k8s_control_plane_endpoint'] }}
+    --token {{ hostvars['k8s-master']['kubeadm_token'] }}
+    --discovery-token-ca-cert-hash {{ hostvars['k8s-master']['kubeadm_hash'] }}
   changed_when: true
